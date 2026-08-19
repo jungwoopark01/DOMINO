@@ -92,6 +92,16 @@ class put_object_cabinet(Base_Task):
         self.add_prohibit_area(self.cabinet, padding=0.01)
         self.prohibited_area.append([-0.15, -0.3, 0.15, 0.3])
 
+        # BUGFIX: check_success() reads self.arm_tag, but the only assignments
+        # are inside _play_once_static/_play_once_dynamic -- which run for expert
+        # demonstrations, not policy evaluation. During eval the policy drives the
+        # robot and check_success() is polled from take_action(), so the attribute
+        # never exists and the task raises AttributeError.
+        # Derive it here with the same rule play_once() uses, so both paths agree.
+        self.arm_tag = ArmTag("right" if (
+            self.end_position[0] if self.use_dynamic else self.object.get_pose().p[0]
+        ) > 0 else "left")
+
 
     def play_once(self):
         if self.use_dynamic:
