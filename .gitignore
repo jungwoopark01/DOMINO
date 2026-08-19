@@ -24,6 +24,10 @@ logs/*
 # eval result
 eval_result/
 
+# fixed-episode manifests: ~40MB of pickles, fetched with
+# `bash uv/download_manifests.sh` rather than tracked
+eval_manifest/
+
 # Code Generation
 assets/*
 !assets/_download.py
