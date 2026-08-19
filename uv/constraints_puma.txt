@@ -1,0 +1,43 @@
+# Version lock for the PUMA venv (policy/PUMA/.venv).
+# Pass with -c to every install that is NOT `-r policy/PUMA/requirements.txt`.
+#
+# These are the versions `uv pip compile policy/PUMA/requirements.txt` resolves
+# on python 3.10. The danger is not that first install -- it is everything
+# after it. In particular
+# PUMA/model/modules/grounding_sam/grounding_dino/requirements.txt lists
+# `transformers` with NO version, so installing it unconstrained will happily
+# move you off the 4.57.0 that PUMA pins.
+#
+# This is the same failure mode that, on the DOMINO side, let curobo's
+# `torch>=1.10` pull in torch 2.13 and break the whole environment.
+
+torch==2.6.0
+torchvision==0.21.0
+triton==3.2.0
+
+# transformers 4.57.0 is YANKED on PyPI ("Error in the setup causing
+# installation issues") and uv prints a warning. Install it anyway and do NOT
+# bump to 4.57.1: the yank is a packaging defect that does not affect this
+# install (verified -- all 15 symbols PUMA imports resolve, including
+# Qwen3VLForConditionalGeneration), and PUMA targets this exact version at
+# PUMA/model/modules/vlm/ascend/qwen3_inference.py:28
+# (_QWEN3_TEXT_ROPE_OPTIMIZED_TRANSFORMERS_VERSION = "4.57.0").
+transformers==4.57.0
+
+numpy==1.26.4
+pydantic==2.10.6
+
+# PUMA pins av==12.3.0 (requirements.txt:21) and uses it to decode training
+# video at PUMA/dataloader/gr00t_lerobot/video.py:17,220.
+# grounding_dino/requirements.txt asks for `supervision>=0.22.0`, and
+# supervision 0.30.0 requires av>=14.2 -- installing it bumped av to 17.1.0 and
+# silently broke PUMA's pin. supervision 0.29.1 satisfies >=0.22.0 AND works
+# with av 12.3.0, so pinning av is enough to pull supervision back one version.
+av==12.3.0
+
+# PUMA pins this itself (requirements.txt:8) and it is already <81, so sapien's
+# pkg_resources problem does not arise in this venv. Kept so nothing drifts up.
+setuptools==80.9.0
+
+# Built against torch 2.6 / CUDA 12.4. README-verified with nvcc 12.0 and 12.4.
+flash-attn==2.7.4.post1

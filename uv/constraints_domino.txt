@@ -1,0 +1,36 @@
+# Version floor/ceiling for the DOMINO venv (./.venv). Pass to every `uv pip install`
+# that is not `-r script/requirements.txt`.
+#
+# Why this file exists: envs/curobo/setup.cfg:50 declares an UNPINNED
+# `torch>=1.10`. Installing curobo without --no-deps resolved torch to 2.13.0
+# (built against CUDA 13), which the 550 driver cannot run, and which compiles
+# extensions with -std=c++20 -- breaking curobo's own helper_math.h `lerp`
+# against C++20's std::lerp. It also dragged numpy, scipy, trimesh and
+# setuptools forward with it.
+
+torch==2.4.1
+torchvision==0.19.1
+triton==3.0.0
+
+numpy==1.26.4
+scipy==1.10.1
+trimesh==4.4.3
+imageio==2.34.2
+
+# setuptools 81 dropped pkg_resources, which sapien/__init__.py:2 imports.
+setuptools<81
+
+# curobo's setup.cfg says `warp-lang>=0.9.0` -- no upper bound. warp 1.16.0
+# REMOVED the warp.torch submodule (not just lazy-loading it: the import is a
+# hard ModuleNotFoundError), but curobo's geom/sdf/world_mesh.py:67 calls
+# wp.torch.device_from_torch() after a plain `import warp as wp`.
+# 1.8.0 is what upstream froze in policy/DexVLA/Eval_Tiny_DexVLA_environment.yml:369.
+warp-lang==1.8.0
+
+# Other versions from that same frozen upstream env, for reference. Not pinned:
+# they are not implicated in any failure, and changing pybind11 after curobo is
+# already compiled would invalidate a working build for no reason.
+#   numpy-quaternion==2024.0.9   (we resolve 2024.0.13)
+#   pybind11==2.13.6             (we resolve 3.1.0)
+#   yourdfpy==0.0.58             (we resolve 0.0.60)
+#   scikit-image==0.25.2         (we resolve 0.24.0 under numpy==1.26.4)
