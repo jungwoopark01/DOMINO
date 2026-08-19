@@ -3379,6 +3379,7 @@ class Base_Task(gym.Env):
                 revert_to_dynamic=True,
                 explicit_z=workspace_z,
             )
+            self._eval_step_displacement = float(np.linalg.norm(step_velocity[:2]))
             print(f"Dynamic motion initialized (Level 1 extended): "
                   f"step_displacement={np.linalg.norm(step_velocity[:2]):.4f}m/step, "
                   f"frame_rate_ratio={FRAME_RATE_RATIO}")

@@ -42,6 +42,67 @@ def class_decorator(task_name):
     return env_instance
 
 
+def _episode_dir(TASK_ENV):
+    """<results>/episode<N>/ -- one directory per episode, holding the video and
+    an info.json describing what actually happened. Without this the results are
+    bare mp4s: you can watch a failure without knowing the seed, the language
+    instruction the policy was given, or why it was scored as it was."""
+    d = os.path.join(str(TASK_ENV.eval_video_path), f"episode{TASK_ENV.test_num}")
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def _dynamic_summary(TASK_ENV):
+    """Per-episode object-motion parameters, minus the ~11.5KB RNG snapshot."""
+    d = getattr(TASK_ENV, "_saved_dynamic_motion_info", None)
+    if not d:
+        return None
+    keep = ("target_actor_name", "start_position", "end_position",
+            "kinematic_duration", "dynamic_level", "dynamic_coefficient",
+            "trajectory_params")
+    out = {k: d[k] for k in keep if k in d}
+    sd = getattr(TASK_ENV, "_eval_step_displacement", None)
+    if sd is not None:
+        out["step_displacement_m_per_step"] = round(sd, 5)
+    return out
+
+
+def _write_episode_info(TASK_ENV, m, seed, instruction, instruction_type,
+                        episode_info, task_name, task_config):
+    if TASK_ENV.eval_video_path is None:
+        return
+    rec = {
+        "episode": TASK_ENV.test_num,
+        "seed": seed,
+        "task_name": task_name,
+        "task_config": task_config,
+        # The instruction is drawn per episode from the seen/unseen pool and was
+        # previously never persisted -- irrecoverable from the artifacts.
+        "instruction": instruction,
+        # which pool it was drawn from: `seen` phrasings appeared in training,
+        # `unseen` are held out. Recorded per episode so an episode directory is
+        # self-describing when copied out of the run.
+        "instruction_type": instruction_type,
+        "success": bool(m.success),
+        "fail_reason": m.fail_reason,
+        "manipulation_score": round(float(m.manipulation_score), 2),
+        "route_completion": round(float(m.route_completion), 2),
+        "steps_taken": int(m.steps_taken),
+        "max_steps": int(m.max_steps),
+        "total_penalty_factor": float(m.total_penalty_factor),
+        "penalty_events": [
+            {"type": p.event_type, "factor": p.penalty_factor} for p in m.penalty_events
+        ],
+        # object/arm placeholder bindings that the instruction was rendered from
+        "episode_info": episode_info,
+        # how fast the target object moves this episode -- the per-episode
+        # difficulty knob. Previously printed only, never persisted.
+        "dynamic_motion": _dynamic_summary(TASK_ENV),
+    }
+    with open(os.path.join(_episode_dir(TASK_ENV), "info.json"), "w") as f:
+        json.dump(rec, f, indent=2, default=str)
+
+
 def eval_function_decorator(policy_name, model_name):
     try:
         policy_model = importlib.import_module(policy_name)
@@ -368,7 +429,7 @@ def eval_policy(task_name,
                     "libx264",
                     "-crf",
                     "23",
-                    f"{TASK_ENV.eval_video_path}/episode{TASK_ENV.test_num}.mp4",
+                    f"{_episode_dir(TASK_ENV)}/video.mp4",
                 ],
                 stdin=subprocess.PIPE,
             )
@@ -420,15 +481,18 @@ def eval_policy(task_name,
 
         if succ:
             TASK_ENV.suc += 1
-            print("\033[92mSuccess!\033[0m")
+            print(f"\r\033[K\033[92mSuccess!\033[0m  {TASK_ENV.take_action_cnt}/{TASK_ENV.step_lim} steps")
         elif fail_reason == "out_of_bounds":
-            print("\033[91mFail! (Object out of bounds)\033[0m")
+            print(f"\r\033[K\033[91mFail! (Object out of bounds)\033[0m  {TASK_ENV.take_action_cnt}/{TASK_ENV.step_lim} steps")
         else:
-            print("\033[91mFail!\033[0m")
+            print(f"\r\033[K\033[91mFail!\033[0m  {TASK_ENV.take_action_cnt}/{TASK_ENV.step_lim} steps")
 
         # Collect episode metrics
         episode_metrics = metrics_tracker.get_episode_metrics(succ, fail_reason, seed=now_seed)
         aggregated_metrics.add_episode(episode_metrics)
+        _write_episode_info(TASK_ENV, episode_metrics, now_seed, instruction,
+                            instruction_type, episode_info,
+                            args["task_name"], args["task_config"])
         TASK_ENV._metrics_tracker = None
         
         # Print episode metrics summary
